@@ -327,8 +327,7 @@ void Creature::addEventWalk(bool firstStep)
 	eventWalk = g_scheduler.addEvent(createSchedulerTask(ticks, std::bind(&Game::checkCreatureWalk, &g_game, getID())));
 }
 
-void Creature::stopEventWalk()
-{
+void Creature::stopEventWalk() {
 	if (eventWalk != 0) {
 		g_scheduler.stopEvent(eventWalk);
 		eventWalk = 0;
