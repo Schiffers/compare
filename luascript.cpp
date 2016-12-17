@@ -12561,3 +12561,4 @@ void LuaEnvironment::executeTimerEvent(uint32_t eventIndex)
 		luaL_unref(m_luaState, LUA_REGISTRYINDEX, parameter);
 	}
 }
+t
