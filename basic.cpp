@@ -1,16 +1,15 @@
-void ProtocolGameBase::sendBasicData()
+void ProtocolGame::sendBasicData()
 {
-	NetworkMessage msg;
-	msg.addByte(0x9F);
-	if (player->isPremium()) {
-		msg.addByte(1);
-		msg.add<uint32_t>(time(nullptr) + (player->premiumDays * 86400));
-	} else {
+    NetworkMessage msg;
+    msg.addByte(0x9F);
+    msg.addByte(player->isPremium() ? 0x01 : 0x00);
+    msg.add<uint32_t>(player->isPremium() ? time(nullptr) + (player->premiumDays * 86400) : time(nullptr) + (player->premiumDays * 86400));
+    msg.addByte(player->getVocation()->getClientId());
+	// Prey System
+	if (player->getVocation()->getId() == 0) {
 		msg.addByte(0);
-		msg.add<uint32_t>(0);
 	}
-	msg.addByte(player->getVocation()->getClientId());
-	if (version > 1099) {
+	else {
 		msg.addByte(1); // has reached Main (allow player to open Prey window)
 	}
 	msg.add<uint16_t>(0xFF); // number of known spells
