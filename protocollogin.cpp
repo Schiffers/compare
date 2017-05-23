@@ -1,6 +1,6 @@
 /**
  * The Forgotten Server - a free and open-source MMORPG server emulator
- * Copyright (C) 2015  Mark Samman <mark.samman@gmail.com>
+ * Copyright (C) 2017  Mark Samman <mark.samman@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,6 @@
 #include "protocollogin.h"
 
 #include "outputmessage.h"
-#include "rsa.h"
 #include "tasks.h"
 
 #include "configmanager.h"
@@ -53,8 +52,20 @@ void ProtocolLogin::getCharacterList(const std::string& accountName, const std::
 	}
 
 	uint32_t ticks = time(nullptr) / AUTHENTICATOR_PERIOD;
-	
+
 	auto output = OutputMessagePool::getOutputMessage();
+	if (!account.key.empty()) {
+		if (token.empty() || !(token == generateToken(account.key, ticks) || token == generateToken(account.key, ticks - 1) || token == generateToken(account.key, ticks + 1))) {
+			output->addByte(0x0D);
+			output->addByte(0);
+			send(output);
+			disconnect();
+			return;
+		}
+		output->addByte(0x0C);
+		output->addByte(0);
+	}
+
 	//Update premium days
 	Game::updatePremium(account);
 
@@ -91,12 +102,13 @@ void ProtocolLogin::getCharacterList(const std::string& accountName, const std::
 	}
 
 	//Add premium days
-	if (version >= 1082) {
-		output->addByte(0);
-		output->addByte(!g_config.getBoolean(ConfigManager::FREE_PREMIUM) ?  (account.premiumDays > 0) : 0);
-		output->add<uint32_t>(!g_config.getBoolean(ConfigManager::FREE_PREMIUM) ? (time(nullptr) + (account.premiumDays * 86400)) : 0);
+	output->addByte(0);
+	if (g_config.getBoolean(ConfigManager::FREE_PREMIUM)) {
+		output->addByte(1);
+		output->add<uint32_t>(0);
 	} else {
-		output->add<uint16_t>(g_config.getBoolean(ConfigManager::FREE_PREMIUM) ? 0xFFFF : account.premiumDays);
+		output->addByte(0);
+		output->add<uint32_t>(time(nullptr) + (account.premiumDays * 86400));
 	}
 
 	send(output);
@@ -127,7 +139,9 @@ void ProtocolLogin::onRecvFirstMessage(NetworkMessage& msg)
 	 */
 
 	if (version <= 760) {
-		disconnectClient("Only clients with protocol " CLIENT_VERSION_STR " allowed!", version);
+		std::ostringstream ss;
+		ss << "Only clients with protocol " << CLIENT_VERSION_STR << " allowed!";
+		disconnectClient(ss.str(), version);
 		return;
 	}
 
@@ -145,7 +159,9 @@ void ProtocolLogin::onRecvFirstMessage(NetworkMessage& msg)
 	setXTEAKey(key);
 
 	if (version < CLIENT_VERSION_MIN || version > CLIENT_VERSION_MAX) {
-		disconnectClient("Only clients with protocol " CLIENT_VERSION_STR " allowed!", version);
+		std::ostringstream ss;
+		ss << "Only clients with protocol " << CLIENT_VERSION_STR << " allowed!";
+		disconnectClient(ss.str(), version);
 		return;
 	}
 
@@ -184,18 +200,19 @@ void ProtocolLogin::onRecvFirstMessage(NetworkMessage& msg)
 
 	std::string password = msg.getString();
 	if (password.empty()) {
- 		disconnectClient("Invalid password.", version);
- 		return;
- 	}
- 
- 	// read authenticator token and stay logged in flag from last 128 bytes
- 	msg.skipBytes((msg.getLength() - 128) - msg.getBufferPosition());
- 	if (!Protocol::RSA_decrypt(msg)) {
- 		disconnectClient("Invalid authentification token.", version);
- 		return;
- 	}
- 
- 	std::string authToken = msg.getString();
-	auto thisPtr = std::dynamic_pointer_cast<ProtocolLogin>(shared_from_this());
+		disconnectClient("Invalid password.", version);
+		return;
+	}
+
+	// read authenticator token and stay logged in flag from last 128 bytes
+	msg.skipBytes((msg.getLength() - 128) - msg.getBufferPosition());
+	if (!Protocol::RSA_decrypt(msg)) {
+		disconnectClient("Invalid authentification token.", version);
+		return;
+	}
+
+	std::string authToken = msg.getString();
+
+	auto thisPtr = std::static_pointer_cast<ProtocolLogin>(shared_from_this());
 	g_dispatcher.addTask(createTask(std::bind(&ProtocolLogin::getCharacterList, thisPtr, accountName, password, authToken, version)));
 }
